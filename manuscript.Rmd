@@ -1,0 +1,204 @@
+---
+title: "Bayesian local exchangeability design for phase II basket trials"
+author: "Yilin Liu"
+date: "10/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("./basket_cluster.R")
+source("./basket_part.R")
+source("./summary_basket.R")
+source("./utils.R")
+source("./plot_sim_mat.R")
+library(dplyr)
+library(clinfun)
+```
+
+
+#### Table 1 Top-10 partitions of the six baskets ($A, \cdots, F$) from Vemurafenib trial
+
+```{r}
+x <- c(2, 6, 1, 1, 0, 8)
+n <- c(7, 14, 8, 26, 10, 19)
+# n <- rep(20, 6)
+p0 <- 0.15
+R <- length(x)
+
+partitions <- basket_part(x=x, n=n, a0=1, b0=1, max_cl = length(x))
+
+top10_part <- head(partitions, 10)
+colnames(top10_part)[1:6] <- paste(LETTERS[1:6], paste(x, n, sep = "/"))
+colnames(top10_part)[7] <- "PP"
+rownames(top10_part) <- NULL
+top10_part
+```
+
+```{r}
+basket_cluster(partitions, a0=1, b0=1, x=x, n=n)
+```
+
+
+#### Figure 2 Pairwise between basket similarity measure for Vemurafenib trial
+
+```{r}
+clusters <- basket_cluster(partitions, a0=1, b0=1, x=x, n=n)
+plot_sim_mat(clusters)
+```
+
+```{r}
+pmat <- rbind(c(0.15, 0.15, 0.15, 0.15, 0.15, 0.15),
+              c(0.15, 0.15, 0.15, 0.15, 0.15, 0.45),
+              c(0.15, 0.45, 0.15, 0.15, 0.15, 0.45),
+              c(0.45, 0.45, 0.15, 0.15, 0.15, 0.45),
+              c(0.45, 0.45, 0.45, 0.15, 0.15, 0.45),
+              c(0.45, 0.45, 0.45, 0.45, 0.15, 0.45),
+              c(0.45, 0.45, 0.45, 0.45, 0.45, 0.45),
+              c(0.45, 0.45, 0.15, 0.35, 0.35, 0.45))
+```
+
+
+```{r}
+load("./data/case1_results.RData")
+
+df1 <- data.frame(rbind(tab1[, c(-1, -2, -9)], eq_results[, c(-1, -8)]))
+df1$label <- c(rep("MEM-Local", 8), rep("MEM-Global", 8))
+df1$label <- factor(df1$label, levels = c("MEM-Local", "MEM-Global"))
+df1$sample_size <- rep(19, nrow(df1))
+df1$scenario <- c(rep(c(paste(0:6, "Success"), "HHLMMH"), 2))
+
+df1_long_1 <- tidyr::pivot_longer(df1, cols = c(1:6),
+                                  names_to = "basket", values_to = "power")
+df1_long_1$is_success <- rep(as.numeric(as.vector(t((pmat > 0.15)))), 2)
+df1_long_1$is_success <- factor(df1_long_1$is_success, 
+                                labels = c("Non-Promising", "Promising"))
+df1_long_1 <- df1_long_1 %>% filter(scenario != "HHLMMH")
+df1_long_1$n_success <- substr(df1_long_1$scenario, 1, 1)
+
+exact_binom1 <- rbind.data.frame(cbind("Exact-Binomial", 19, paste(c(0:5), "Success"), "X", 0.004, "Non-Promising", c(0:5)),cbind("Exact-Binomial", 19, paste(c(1:6), "Success"),"X", 0.683, "Promising", c(1:6)))
+names(exact_binom1) <- names(df1_long_1)
+
+exact_binom1 <- exact_binom1 %>% mutate_at(c(2,5,7), as.numeric)
+df1_long_1 <- rbind.data.frame(df1_long_1, exact_binom1)
+
+# pdf("case1_scatter1.pdf", width = 7, height = 5)
+df1_long_1 %>% ggplot(aes(x = n_success, y = power, group = interaction(is_success, label))) +
+  # geom_line(aes(linetype = label, color = scenario)) + 
+  geom_point(aes(color = label, shape = is_success), size = 3,
+             position = position_dodge(width = 0.5)) + theme_bw() +
+  guides(color = guide_legend(override.aes = list(size=2))) +
+  # theme(axis.title.x = element_text(margin = margin(b = -5))) +
+  scale_y_continuous(breaks = seq(0, 1, 0.1)) +
+  scale_color_manual(values = c("MEM-Local" = "Red", "MEM-Global" = "blue", "Exact-Binomial" = "black")) +
+  # scale_shape_manual(values = c("MEM-Local" = "o", "MEM-Global" = "x"))+
+  scale_shape_manual(values = c("Non-Promising" = "o", "Promising" = "+"))+
+  # scale_color_brewer(palette = "Set2")+
+  labs(x = "\nNumber of Promising Baskets", y = "Basket-wise Power / Type I Error\n", 
+       shape = "Basket Type", color = "Method")
+
+# dev.off()
+```
+```{r}
+simon2stg <- ph2simon(pu=0.15, pa=0.45, ep1 = 0.02, ep2 = 0.21)
+simon2stg
+```
+
+
+```{r}
+r1 <- 2
+n1 <- 10
+n2 <- 9
+r <- 6
+
+p_rej0 <- sapply(c(0.15, 0.35, 0.45), function(p) {
+  1-(pbinom(r1, n1, p) + sum(sapply(c((r1+1):min(n1, r)), function(x) 
+  {dbinom(x, n1, p) * pbinom(r-x, n2, p)})))
+})
+
+p_rej0
+```
+
+### Comparison with Simon's 2-stage design
+
+```{r}
+load("./data/case3_results.RData")
+
+simon_results <- pmat[-8, ]
+simon_results[pmat[-8, ] > 0.15] <- p_rej0[3]
+simon_results[pmat[-8, ] <= 0.15] <- p_rej0[1]
+
+df3 <- data.frame(rbind(tab3[, c(-1, -2, -9)], simon_results))
+names(df3)[1:6] <- LETTERS[1:6]
+df3$label <- c(rep("MEM-Local", 8), rep("Simon-2-Stage", 7))
+df3$label <- factor(df3$label, levels = c("MEM-Local", "Simon-2-Stage"))
+df3$sample_size <- rep(19, nrow(df3))
+df3$scenario <- c(rep(c(paste(0:6, "Success"), "HHLMMH"), 2))[-16]
+
+
+df3_long_1 <- tidyr::pivot_longer(df3, cols = c(1:6),
+                                  names_to = "basket", values_to = "power")
+df3_long_1$is_success <- rep(as.numeric(as.vector(t((pmat > 0.15)))), 2)[-c(91:96)]
+df3_long_1$is_success <- factor(df3_long_1$is_success, 
+                                labels = c("Non-Promising", "Promising"))
+df3_long_1 <- df3_long_1 %>% filter(scenario != "HHLMMH")
+df3_long_1$n_success <- substr(df3_long_1$scenario, 1, 1)
+
+# pdf("case3_scatter.pdf", width = 7, height = 5)
+df3_long_1 %>% ggplot(aes(x = n_success, y = power, group = interaction(is_success, label))) +
+  # geom_line(aes(linetype = label, color = scenario)) + 
+  geom_point(aes(color = label, shape = is_success), size = 3,
+             position = position_dodge(width = 0.5)) + theme_bw() +
+  guides(color = guide_legend(override.aes = list(size=2))) +
+  scale_y_continuous(breaks = seq(0, 1, 0.1)) +
+  scale_color_manual(values = c("MEM-Local" = "red", "Simon-2-Stage" = "blue")) +
+  # scale_shape_manual(values = c("MEM-Local" = "o", "MEM-Global" = "x"))+
+  scale_shape_manual(values = c("Non-Promising" = "o", "Promising" = "+"))+
+  # scale_color_brewer(palette = "Set2")+
+  labs(x = "\nNumber of Promising Baskets", y = "Basket-wise Power / Type I Error\n", 
+       shape = "Basket Type", color = "Method")
+
+ggsave("case3_scatter.eps", width=7, height=5)
+```
+
+#### Expected Sample Size
+
+```{r}
+simon_en_mat <- n1 + (1 - pbinom(r1, n1, pmat)) * n2
+
+simon_en_mat
+
+df4 <- rbind.data.frame(EN_sep, simon_en_mat)
+names(df4)[1:6] <- LETTERS[1:6]
+df4$label <- c(rep("MEM-Local", 8), rep("Simon-2-Stage", 8))
+df4$label <- factor(df4$label, levels = c("MEM-Local", "Simon-2-Stage"))
+# df4$sample_size <- rep(19, nrow(df4))
+df4$scenario <- c(rep(c(paste(0:6, "Success"), "HHLMMH"), 2))
+
+
+df4_long_1 <- tidyr::pivot_longer(df4, cols = c(1:6),
+                                  names_to = "basket", values_to = "EN")
+df4_long_1$is_success <- rep(as.numeric(as.vector(t((pmat > 0.15)))), 2)
+df4_long_1$is_success <- factor(df4_long_1$is_success, 
+                                labels = c("Non-Promising", "Promising"))
+df4_long_1 <- df4_long_1 %>% filter(scenario != "HHLMMH")
+df4_long_1$n_success <- substr(df4_long_1$scenario, 1, 1)
+
+# pdf("EN_scatter1.pdf", width = 7, height = 5)
+df4_long_1 %>% ggplot(aes(x = n_success, y = EN, group = interaction(is_success, label))) +
+  # geom_line(aes(linetype = label, color = scenario)) + 
+  geom_point(aes(color = label, shape = is_success), size = 3, 
+             position = position_dodge(width = 0.5)) + theme_bw() +
+  guides(color = guide_legend(override.aes = list(size=2))) +
+  scale_y_continuous(breaks = seq(1, 20, 2), limits = c(1, 20)) +
+  scale_color_manual(values = c("MEM-Local" = "red", "Simon-2-Stage" = "blue")) +
+  # scale_shape_manual(values = c("MEM-Local" = "o", "MEM-Global" = "x"))+
+  scale_shape_manual(values = c("Non-Promising" = "o", "Promising" = "+"))+
+  # scale_color_brewer(palette = "Set2")+
+  labs(x = "\nNumber of Promising Baskets", y = "Expected Sample Size\n", 
+       shape = "Basket Type", color = "Method")
+
+ggsave("EN_scatter1.eps", width=7, height=5)
+# dev.off()
+```
+
