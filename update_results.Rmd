@@ -1,0 +1,110 @@
+---
+title: "Example Usage"
+author: "Yilin Liu"
+date: "2/21/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(xtable)
+source("./basket.R")
+source("./single_stg_anal.R")
+```
+
+### Overview
+
+This document shows an example of computing operating characteristics for a local-MEM trial with fixed design for 4 baskets. The simulation is performed in `prior_sensitivity_analysis.R`. Here we directly load the simulation data and calculate basket-wise/trial-wise metrics.
+
+### Prior settings:
+
+Let $|\Omega_j|$ be the number of blocks in partition j.
+
+* Setting 1: no preference over partitions
+
+$$
+\pi(\Omega_{j}) = \frac{|\Omega_j|^0}{\sum_{j}|\Omega_j|^0} = \frac{1}{J}
+$$
+
+* Setting 2
+
+$$
+\pi(\Omega_{j}) = \frac{|\Omega_j|^1}{\sum_{j}|\Omega_j|^1}
+$$
+
+* Setting 3
+
+$$
+\pi(\Omega_{j}) = \frac{|\Omega_j|^2}{\sum_{j}|\Omega_j|^2}
+$$
+
+### 4 baskets
+
+#### $p_0=0.15$ for all
+
+```{r}
+load("./data/B4_0.15_0.15_0.15_0.15.RData")
+pmat
+```
+
+```{r}
+b4_part_mat <- cbind(part, n_bk, prior_mat)
+b4_part_mat
+print(xtable(b4_part_mat,
+             digits=c(rep(0, 5), rep(3, 4))),
+      scalebox = 0.9,
+      include.colnames=TRUE,
+      include.rownames=FALSE)
+```
+
+
+```{r}
+# ---- Summarize local MEM results ----
+mem_eval1 <- mem_eval(mem_pp, pmat, target=0.099)
+```
+
+```{r}
+mem_b4_homo <- NULL
+
+for (i in 1:3) {
+  colnames(mem_eval1[[i]])[ncol(mem_eval1[[i]])] <- "FWER"
+  mem_b4_homo <- rbind(mem_b4_homo, mem_eval1[[i]])
+}
+# mem_b4_homo
+
+rownames(mem_b4_homo) <- rep(c(paste(c(0:B), "Success")), 3)
+mem_b4_homo
+```
+
+#### Uniform prior for independent analysis
+
+
+```{r}
+uni_pp <- array(NA, dim = c(nrow(pmat), nsim, B))
+
+for(j in 1:nrow(pmat)){
+  ptrue <- pmat[j, ]
+  for(i in 1:nsim){
+    set.seed(i)
+    x <- rbinom(B, size = Nvec, prob = ptrue)
+    y <- Nvec - x
+    uni_pp[j, i , ] <- 1 - pbeta(p0, 1+x, 1+y)
+  }
+}
+# power for basket-wise analysis with beta(1,1) prior
+uni_pow <- matrix(NA, nrow = nrow(pmat), ncol = B)
+
+# find posterior thereshold maintaining the FWER at target
+gam <- fwer1(post_prob = uni_pp[1, , ], fwer_target = target)$gam
+uni_fwer <- NULL
+for(j in 1:nrow(pmat)){
+  pp <- uni_pp[j, , ]
+  uni_pow[j, ] <- colMeans(pp>gam)
+  uni_fwer[j] <- fwer1(post_prob = matrix(pp[, pmat[j, ]==p0], nrow=nsim),
+              gam = gam)$FWER
+}
+
+b4_homo_uni <- cbind(uni_pow, uni_fwer)
+b4_homo_uni
+```
+
