@@ -8,7 +8,7 @@ source("basket.R")
 # set up the basket trial
 # ---------------------------------------------------------
 # the number of baskets
-B <- 6
+B <- 4
 # Nvec: the sample size of each basket
 Nvec <- rep(19, B)
 
