@@ -9,3 +9,5 @@ the design and monitoring of phase II basket trials based on the local multisour
 
 * `basket.R` implements the core idea of our method including partitioning of baskets into blocks, posterior inference under the proposed local information borrowing strategy
 * `prior_sensitivity_analysis.R` gives an example of simulation on fixed design. In this example, we perform 5000 simulations on 4 baskets with maximum sample size all set to 19. The response rates are set to be 0.15 under the null (historical controls) and 0.45 under the alternative (target) for all baskets. Three different priors mentioned in our paper are considered here.
+
+For reference, pleasee see [https://onlinelibrary.wiley.com/doi/10.1002/sim.9514]
